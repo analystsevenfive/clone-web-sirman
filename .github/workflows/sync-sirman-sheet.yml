@@ -16,20 +16,17 @@ on:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # Sirman's CloudFront blocks GitHub-hosted runner IPs (403), so this runs on our own Windows machine
+    runs-on: [self-hosted, windows]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: scripts/sheet_sync/requirements.txt
-      - run: pip install -r scripts/sheet_sync/requirements.txt
-      - run: python -m playwright install --with-deps chromium
+      - run: python -m pip install -r scripts/sheet_sync/requirements.txt
+      - run: python -m playwright install chromium
       - name: Sync
         run: python scripts/sheet_sync/sync_sirman_to_sheet.py
         env:
+          PYTHONIOENCODING: utf-8
           SIRMAN_USER: ${{ secrets.SIRMAN_USER }}
           SIRMAN_PASSWORD: ${{ secrets.SIRMAN_PASSWORD }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
