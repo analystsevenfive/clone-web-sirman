@@ -28,3 +28,8 @@ exports/
 scratch/
 sirman_api_calls.json
 
+
+# Google service account keys (never commit)
+*-[0-9a-f]*.json.key
+facebook-sheet-autoposter-*.json
+*service-account*.json
