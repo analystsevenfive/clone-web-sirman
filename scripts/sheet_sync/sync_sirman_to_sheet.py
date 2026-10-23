@@ -36,7 +36,11 @@ async def _login():
     hdrs, cookies = {}, []
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        ctx = await browser.new_context(viewport={"width": 1440, "height": 900})
+        ctx = await browser.new_context(
+            viewport={"width": 1440, "height": 900},
+            locale="en-US",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        )
         page = await ctx.new_page()
 
         def on_req(r):
@@ -51,7 +55,14 @@ async def _login():
             await asyncio.sleep(3)
         except Exception:
             pass
-        await page.wait_for_selector("#inputEmail, input[type='email']", timeout=20000)
+        try:
+            await page.wait_for_selector("#inputEmail, input[type='email']", timeout=45000)
+        except Exception:
+            # keep evidence for the workflow artifact
+            await page.screenshot(path="login_debug.png", full_page=True)
+            body = (await page.inner_text("body"))[:800].replace("\n", " | ")
+            print(f"[DEBUG] login form missing. url={page.url} title={await page.title()!r} body={body!r}")
+            raise
         await page.fill("#inputEmail, input[type='email']", user)
         await page.fill("#inputPassword, input[type='password']", pw)
         await page.click("button[type='submit'], input[type='submit']")
