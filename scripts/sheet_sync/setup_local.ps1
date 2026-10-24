@@ -43,8 +43,19 @@ if ($redo) {
     $pw    = Read-Host "Sirman password" -AsSecureString
     $pwTxt = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
     $sheet = Read-Host "Google Sheet ID (the part between /d/ and /edit in the sheet URL)"
-    $key   = (Read-Host "Path to the service account key .json file").Trim('"')
-    if (-not (Test-Path $key)) { throw "Key file not found: $key" }
+    # offer a key file found in the project folder, otherwise ask for its path (until it exists)
+    $repoRoot = Resolve-Path (Join-Path $Here "..\..")
+    $found = Get-ChildItem $repoRoot -Filter "*.json" -File -ErrorAction SilentlyContinue |
+             Where-Object { $_.Name -like "facebook-sheet-autoposter-*" -or $_.Name -like "*service*account*" } | Select-Object -First 1
+    $key = ""
+    if ($found) {
+        $use = Read-Host "Found key file $($found.FullName). Use it? [Y/n]"
+        if ($use -notmatch '^[nN]') { $key = $found.FullName }
+    }
+    while (-not $key -or -not (Test-Path -LiteralPath $key)) {
+        $key = (Read-Host "Path to the service account key .json file").Trim('"').Trim()
+        if (-not $key -or -not (Test-Path -LiteralPath $key)) { Write-Host "File not found, try again." -ForegroundColor Yellow; $key = "" }
+    }
     $rate  = Read-Host "EUR -> THB rate [38]"
     if (-not $rate) { $rate = "38" }
     Set-UserEnv "SIRMAN_USER" $user
