@@ -3,7 +3,7 @@
   One-step setup of a GitHub self-hosted runner for the Sirman -> Google Sheet sync.
 
   Run in PowerShell on the machine that should do the sync (needs Python 3.10+ in PATH):
-      powershell -ExecutionPolicy Bypass -File setup_runner.ps1
+      powershell -ExecutionPolicy Bypass -File setup_runner.ps1 [-Repo https://github.com/<owner>/<repo>]
 
   You will be asked for a registration token:
       GitHub repo > Settings > Actions > Runners > New self-hosted runner  (copy the token after "--token")
@@ -11,8 +11,11 @@
 
   The runner starts automatically when this Windows user logs in (the screen may be locked).
 #>
+param(
+    # Must match the repo shown on GitHub > Settings > Actions > Runners > New self-hosted runner (--url ...)
+    [string]$Repo = "https://github.com/analystsevenfive/clone-web-sirman"
+)
 $ErrorActionPreference = "Stop"
-$Repo      = "https://github.com/mktteamsevenfive-source/clone-web-sirman"
 $RunnerDir = "C:\actions-runner"
 $TaskName  = "GitHub Actions Runner (sirman-sync)"
 $ReqFile   = Join-Path $PSScriptRoot "requirements.txt"
@@ -41,7 +44,7 @@ if (-not $existing) {
     $token = Read-Host "Paste the registration token"
     Push-Location $RunnerDir
     .\config.cmd --url $Repo --token $token --name "$env:COMPUTERNAME-sirman" --labels "sirman-sync" --unattended --replace
-    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Runner registration failed (token expired or wrong?)" }
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Runner registration failed: check the token (valid ~1 hour) and that -Repo matches the --url on the GitHub runner page" }
     Pop-Location
 } else {
     Write-Host "Runner already registered in $RunnerDir - skipping"
