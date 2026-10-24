@@ -28,8 +28,26 @@ API = "https://api-service.sirman.com"
 HERE = Path(__file__).resolve().parent
 
 
+def load_windows_user_env():
+    """Windows user env vars set after this shell/VS Code started are not inherited; read them from the registry."""
+    if sys.platform != "win32":
+        return
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            i = 0
+            while True:
+                name, value, _ = winreg.EnumValue(key, i)
+                i += 1
+                if name.startswith(("SIRMAN_", "GOOGLE_", "EUR_THB")):
+                    os.environ.setdefault(name, str(value))
+    except OSError:
+        pass  # EnumValue raises OSError when there are no more values
+
+
 def load_env():
     """Read KEY=VALUE lines from .env next to this script (real env vars win)."""
+    load_windows_user_env()
     f = HERE / ".env"
     if not f.exists():
         return
