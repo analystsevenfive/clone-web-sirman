@@ -184,8 +184,13 @@ def append_log(sh, status, rows=0, found=0, missing=0, price_changed=0, stock_ch
             lw = sh.worksheet(tab)
         except gspread.WorksheetNotFound:
             lw = sh.add_worksheet(tab, rows=1000, cols=len(LOG_HEADER))
-        if not lw.get_all_values():
-            lw.append_row(LOG_HEADER, value_input_option="USER_ENTERED")
+        if lw.row_values(1)[:1] != LOG_HEADER[:1]:
+            # no header yet (also when the tab already holds log rows): insert it on top, keep existing rows
+            lw.insert_row(LOG_HEADER, 1)
+            lw.format(f"A1:{gspread.utils.rowcol_to_a1(1, len(LOG_HEADER))}", {
+                "textFormat": {"bold": True},
+                "backgroundColor": {"red": 1, "green": 0.95, "blue": 0.8}})
+            lw.freeze(rows=1)
         now = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
         mode = "อัตโนมัติ" if not sys.stdout.isatty() else "กดรันเอง"
         lw.append_row([now, status, mode, rows, found, missing, price_changed, stock_changed,
