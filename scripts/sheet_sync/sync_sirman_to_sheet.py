@@ -8,10 +8,10 @@ Pull price (EUR) + stock from the Sirman service portal and write them to a Goog
 3. Updates PRICE (EUR * EUR_THB, rounded) and STOCK for rows whose MODEL ("SIR2-<code>") is found
 4. Highlights rows not found on the portal and writes a note in the NOTE column
 
-Env: SIRMAN_USER, SIRMAN_PASSWORD, GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEET_ID,
+Env: SIRMAN_USER, SIRMAN_PASSWORD, GOOGLE_SERVICE_ACCOUNT_B64 (or GOOGLE_SERVICE_ACCOUNT_JSON), GOOGLE_SHEET_ID,
      [GOOGLE_SHEET_TAB], [EUR_THB=38], [FULL_CRAWL=0], [DRY_RUN=0]
 """
-import asyncio, json, os, sys, time
+import asyncio, base64, json, os, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -137,8 +137,13 @@ def fetch_parts(api, wanted):
 
 
 def main():
+    # base64 form avoids the runner's secret masker choking on multi-line JSON
+    if os.environ.get("GOOGLE_SERVICE_ACCOUNT_B64"):
+        sa_json = base64.b64decode(os.environ["GOOGLE_SERVICE_ACCOUNT_B64"]).decode("utf-8")
+    else:
+        sa_json = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
     creds = Credentials.from_service_account_info(
-        json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]),
+        json.loads(sa_json),
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
     sh = gspread.authorize(creds).open_by_key(os.environ["GOOGLE_SHEET_ID"])

@@ -29,7 +29,7 @@ jobs:
           PYTHONIOENCODING: utf-8
           SIRMAN_USER: ${{ secrets.SIRMAN_USER }}
           SIRMAN_PASSWORD: ${{ secrets.SIRMAN_PASSWORD }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SERVICE_ACCOUNT_B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_B64 }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_SHEET_TAB: ${{ vars.GOOGLE_SHEET_TAB }}
           EUR_THB: ${{ vars.EUR_THB || '38' }}
