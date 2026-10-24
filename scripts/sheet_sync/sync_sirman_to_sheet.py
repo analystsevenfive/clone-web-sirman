@@ -8,7 +8,8 @@ Pull price (EUR) + stock from the Sirman service portal and write them to a Goog
 3. Updates PRICE (EUR * EUR_THB, rounded) and STOCK for rows whose MODEL ("SIR2-<code>") is found
 4. Highlights rows not found on the portal and writes a note in the NOTE column
 
-Env: SIRMAN_USER, SIRMAN_PASSWORD, GOOGLE_SERVICE_ACCOUNT_B64 (or GOOGLE_SERVICE_ACCOUNT_JSON), GOOGLE_SHEET_ID,
+Settings come from env vars or a .env file next to this script (see .env.example):
+     SIRMAN_USER, SIRMAN_PASSWORD, GOOGLE_SERVICE_ACCOUNT_FILE (or _B64 / _JSON), GOOGLE_SHEET_ID,
      [GOOGLE_SHEET_TAB], [EUR_THB=38], [FULL_CRAWL=0], [DRY_RUN=0]
 """
 import asyncio, base64, json, os, sys, time
@@ -25,6 +26,21 @@ if sys.platform == "win32":
 
 API = "https://api-service.sirman.com"
 HERE = Path(__file__).resolve().parent
+
+
+def load_env():
+    """Read KEY=VALUE lines from .env next to this script (real env vars win)."""
+    f = HERE / ".env"
+    if not f.exists():
+        return
+    for line in f.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+load_env()
 NOT_FOUND_NOTE = "ไม่พบบนเว็บ Sirman (ไม่ได้อัปเดต)"
 RATE = float(os.environ.get("EUR_THB", "38"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
@@ -137,8 +153,9 @@ def fetch_parts(api, wanted):
 
 
 def main():
-    # base64 form avoids the runner's secret masker choking on multi-line JSON
-    if os.environ.get("GOOGLE_SERVICE_ACCOUNT_B64"):
+    if os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE"):
+        sa_json = (HERE / os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"]).read_text(encoding="utf-8")  # absolute paths win
+    elif os.environ.get("GOOGLE_SERVICE_ACCOUNT_B64"):
         sa_json = base64.b64decode(os.environ["GOOGLE_SERVICE_ACCOUNT_B64"]).decode("utf-8")
     else:
         sa_json = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]

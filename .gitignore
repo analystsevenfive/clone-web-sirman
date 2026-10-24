@@ -33,3 +33,7 @@ sirman_api_calls.json
 *-[0-9a-f]*.json.key
 facebook-sheet-autoposter-*.json
 *service-account*.json
+
+# Local sync settings / keys (never commit)
+scripts/sheet_sync/.env
+scripts/sheet_sync/service_account.json
