@@ -13,6 +13,7 @@ Settings come from env vars or a .env file next to this script (see .env.example
      [GOOGLE_SHEET_TAB], [EUR_THB=38], [FULL_CRAWL=0], [DRY_RUN=0]
 """
 import asyncio, base64, json, os, sys, time
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -170,6 +171,37 @@ def fetch_parts(api, wanted):
     return found
 
 
+LOG_HEADER = ["เวลา", "สถานะ", "โหมด", "แถวในชีต", "พบบนเว็บ", "ไม่พบ", "ราคาเปลี่ยน", "สต็อกเปลี่ยน", "EUR_THB", "ใช้เวลา (วินาที)", "หมายเหตุ"]
+T0 = time.time()
+STATE = {"sh": None}
+
+
+def append_log(sh, status, rows=0, found=0, missing=0, price_changed=0, stock_changed=0, note=""):
+    """Add one row to the log tab (created with a header if missing). Never raises."""
+    try:
+        tab = os.environ.get("GOOGLE_LOG_TAB", "log")
+        try:
+            lw = sh.worksheet(tab)
+        except gspread.WorksheetNotFound:
+            lw = sh.add_worksheet(tab, rows=1000, cols=len(LOG_HEADER))
+        if not lw.get_all_values():
+            lw.append_row(LOG_HEADER, value_input_option="USER_ENTERED")
+        now = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
+        mode = "อัตโนมัติ" if not sys.stdout.isatty() else "กดรันเอง"
+        lw.append_row([now, status, mode, rows, found, missing, price_changed, stock_changed,
+                       RATE, round(time.time() - T0), note], value_input_option="USER_ENTERED")
+        print(f"[LOG] {status} -> tab '{tab}'")
+    except Exception as e:  # logging must not break the sync
+        print(f"[LOG] could not write log: {e}")
+
+
+def to_num(text):
+    try:
+        return float(str(text).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
 def main():
     if os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE"):
         sa_json = (HERE / os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"]).read_text(encoding="utf-8")  # absolute paths win
@@ -182,6 +214,7 @@ def main():
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
     sh = gspread.authorize(creds).open_by_key(os.environ["GOOGLE_SHEET_ID"])
+    STATE["sh"] = sh
     ws = sh.worksheet(os.environ["GOOGLE_SHEET_TAB"]) if os.environ.get("GOOGLE_SHEET_TAB") else sh.sheet1
     values = ws.get_all_values()
     header = values[0]
@@ -202,9 +235,15 @@ def main():
         return gspread.utils.rowcol_to_a1(r, c + 1)
 
     updates, missing = [], set()
+    price_changed = stock_changed = 0
     for r, code in rows.items():
         if code in found:
             eur, stock = found[code]
+            old = values[r - 1]
+            old_p = to_num(old[col["PRICE"]]) if len(old) > col["PRICE"] else None
+            old_s = to_num(old[col["STOCK"]]) if len(old) > col["STOCK"] else None
+            price_changed += old_p != round(eur * RATE)
+            stock_changed += old_s != stock
             updates.append({"range": a1(r, col["PRICE"]), "values": [[round(eur * RATE)]]})
             updates.append({"range": a1(r, col["STOCK"]), "values": [[stock]]})
             updates.append({"range": a1(r, note_col), "values": [[""]]})
@@ -231,7 +270,13 @@ def main():
     for i in range(0, len(reqs), 500):
         sh.batch_update({"requests": reqs[i:i + 500]})
     print(f"[DONE] updated {len(found)} rows, marked {len(missing)} not found")
+    append_log(sh, "สำเร็จ", len(rows), len(found), len(missing), price_changed, stock_changed)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:
+        if STATE["sh"] is not None and not DRY_RUN:
+            append_log(STATE["sh"], "ล้มเหลว", note=f"{type(e).__name__}: {e}"[:300])
+        raise
