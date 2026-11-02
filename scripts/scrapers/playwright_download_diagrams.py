@@ -13,6 +13,7 @@ Usage:
 
 import asyncio
 import json
+import os
 import sys
 import time
 import re
@@ -41,7 +42,7 @@ SUPABASE_BUCKET  = "diagram_images"
 API_BASE         = "https://api-service.sirman.com"
 SIRMAN_LOGIN_URL = "https://www.service.sirman.com"
 SIRMAN_EMAIL     = "korralak.sa@sevenfive.co.th"
-SIRMAN_PASSWORD  = "Service@1234"
+SIRMAN_PASSWORD  = os.environ["SIRMAN_PASSWORD"]
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 HEADERS_FILE = PROJECT_ROOT / "sirman_headers.json"

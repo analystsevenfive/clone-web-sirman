@@ -15,6 +15,7 @@ Settings come from env vars or a .env file next to this script (see .env.example
 import asyncio, base64, json, os, sys, time
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 import gspread
@@ -64,6 +65,10 @@ NOT_FOUND_NOTE = "ไม่พบบนเว็บ Sirman (ไม่ได้�
 RATE = float(os.environ.get("EUR_THB", "38"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 FULL_CRAWL = os.environ.get("FULL_CRAWL") == "1"
+URL_COL = 12  # column M (0-based)
+PRICE_COLS = (13, 14, 15)  # N, O, P: unit price, net price, total price (EUR)
+PRICE_HEADERS = ("UNIT PRICE (EUR)", "NET PRICE (EUR)", "TOT PRICE (EUR)")
+SPARE_PART_SECTOR = "00"  # the portal applies this sector's discount to spare parts
 
 
 async def _login():
@@ -126,6 +131,18 @@ class Sirman:
         self.s.headers["cookie"] = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
         print("[AUTH OK]")
 
+    def discount_coefficient(self):
+        """Net-price multiplier for the logged-in customer (the portal computes net price client-side)."""
+        profile = self.get("/service-api/users/get-profile") or {}
+        discounts = self.get(f"/service-api/clients/{profile.get('idSap')}/discounts/") or []
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        for d in discounts:
+            if (d.get("sector") == SPARE_PART_SECTOR and d.get("canceled") != "Y"
+                    and d["validityStart"][:10] <= now <= d["validityEnd"][:10]):
+                return Decimal(d["coefficient"])
+        print("[WARN] no discount found for the account; net price = unit price")
+        return Decimal(1)
+
     def get(self, path):
         for _ in range(4):
             try:
@@ -164,7 +181,8 @@ def fetch_parts(api, wanted):
         for v in api.get(f"/service-dwh/products/{pid}/exploded-views") or []:
             for p in api.get(f"/service-dwh/products/{pid}/exploded-views/{v['id']}/parts") or []:
                 if p["id"] in wanted:
-                    found[p["id"]] = (float(p["price"]), int(p["dispTot"]))
+                    found[p["id"]] = (float(p["price"]), int(p["dispTot"]),
+                                      f"https://www.service.sirman.com/products/{pid}/tavola/{v['id']}")
 
     with ThreadPoolExecutor(8) as ex:
         list(ex.map(work, pids))
@@ -233,7 +251,10 @@ def main():
             rows[i] = m[5:]
     print(f"[SHEET] {len(rows)} part rows")
 
-    found = fetch_parts(Sirman(), set(rows.values()))
+    sirman = Sirman()
+    coeff = sirman.discount_coefficient()
+    print(f"[DISCOUNT] net price = unit price x {coeff}")
+    found = fetch_parts(sirman, set(rows.values()))
     print(f"[RESULT] found {len(found)} / {len(rows)}")
 
     def a1(r, c):
@@ -243,7 +264,7 @@ def main():
     price_changed = stock_changed = 0
     for r, code in rows.items():
         if code in found:
-            eur, stock = found[code]
+            eur, stock, url = found[code]
             old = values[r - 1]
             old_p = to_num(old[col["PRICE"]]) if len(old) > col["PRICE"] else None
             old_s = to_num(old[col["STOCK"]]) if len(old) > col["STOCK"] else None
@@ -251,12 +272,19 @@ def main():
             stock_changed += old_s != stock
             updates.append({"range": a1(r, col["PRICE"]), "values": [[round(eur * RATE)]]})
             updates.append({"range": a1(r, col["STOCK"]), "values": [[stock]]})
+            updates.append({"range": a1(r, URL_COL), "values": [[url]]})
+            unit = Decimal(str(eur))
+            net = (unit * coeff).quantize(Decimal("0.01"), ROUND_HALF_UP)
+            for c, v in zip(PRICE_COLS, (unit, net, net)):  # quantity is 1, so total = net
+                updates.append({"range": a1(r, c), "values": [[float(v)]]})
             updates.append({"range": a1(r, note_col), "values": [[""]]})
         else:
             missing.add(r)
             updates.append({"range": a1(r, note_col), "values": [[NOT_FOUND_NOTE]]})
     if note_col == len(header):
         updates.append({"range": a1(1, note_col), "values": [["NOTE"]]})
+    for c, name in zip(PRICE_COLS, PRICE_HEADERS):
+        updates.append({"range": a1(1, c), "values": [[name]]})
 
     if DRY_RUN:
         print(f"[DRY RUN] would update {len(found)} rows, mark {len(missing)} not found")
